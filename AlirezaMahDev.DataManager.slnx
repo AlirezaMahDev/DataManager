@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AlirezaMahDev.Extensions.DataManager/AlirezaMahDev.Extensions.DataManager.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AlirezaMahDev.Extensions.DataManager.Tests/AlirezaMahDev.Extensions.DataManager.Tests.csproj" />
+  </Folder>
+</Solution>
