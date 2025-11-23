@@ -11,6 +11,9 @@ interface IDataAccess
 {
     DataLocation<DataPath> GetRoot();
     ValueTask<DataLocation<DataPath>> GetRootAsync(CancellationToken cancellationToken = default);
+    
+    DataLocation<DataPath> GetTrash();
+    ValueTask<DataLocation<DataPath>> GetTrashAsync(CancellationToken cancellationToken = default);
 }
 
 class DataIndex
@@ -81,6 +84,13 @@ sealed class DataAccess : IDisposable, IDataAccess
         DataLocation<DataPath>.Read(this, 0);
 
     public async ValueTask<DataLocation<DataPath>> GetRootAsync(CancellationToken cancellationToken = default) =>
+        await DataLocation<DataPath>.ReadAsync(this, 0, cancellationToken);
+
+
+    public DataLocation<DataPath> GetTrash() =>
+        GetRoot().GetOrAdd(".trash".AsString64());
+
+    public async ValueTask<DataLocation<DataPath>> GetTrashAsync(CancellationToken cancellationToken = default) =>
         await DataLocation<DataPath>.ReadAsync(this, 0, cancellationToken);
 
     public long GenerateOffset(int length)

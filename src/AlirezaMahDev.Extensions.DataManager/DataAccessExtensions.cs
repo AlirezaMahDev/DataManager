@@ -40,8 +40,20 @@ static class DataAccessExtensions
 
         public async ValueTask<DataLocation<TDataValue>> CreateAsync<TDataValue>(Func<TDataValue, TDataValue> func,
             CancellationToken cancellationToken = default)
-            where TDataValue : unmanaged, IDataValue<TDataValue> =>
-            (await access.CreateAsync<TDataValue>(cancellationToken)).Update(func);
+            where TDataValue : unmanaged, IDataValue<TDataValue>
+        {
+            var dataLocation = await access.CreateAsync<TDataValue>(cancellationToken);
+            return dataLocation.Update(func);
+        }
+
+        public async ValueTask<DataLocation<TDataValue>> CreateAsync<TDataValue>(
+            Func<TDataValue, CancellationToken, ValueTask<TDataValue>> func,
+            CancellationToken cancellationToken = default)
+            where TDataValue : unmanaged, IDataValue<TDataValue>
+        {
+            var dataLocation = await access.CreateAsync<TDataValue>(cancellationToken);
+            return await dataLocation.UpdateAsync(func, cancellationToken);
+        }
 
 
         public DataLocation<TDataValue> Read<TDataValue>(long offset)

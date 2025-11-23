@@ -31,17 +31,17 @@ static class DataLocationExtensions
     }
 
     extension<TValue>(IEnumerable<DataLocation<TValue>> enumerable)
-        where TValue : unmanaged, IDataCollection, IDataValue<TValue>
+        where TValue : unmanaged, IDataTreeCollection, IDataValue<TValue>
     {
     }
 
     extension<TValue>(IAsyncEnumerable<DataLocation<TValue>> asyncEnumerable)
-        where TValue : unmanaged, IDataCollection, IDataValue<TValue>
+        where TValue : unmanaged, IDataTreeCollection, IDataValue<TValue>
     {
     }
 
     extension<TValue>(DataLocation<TValue> location)
-        where TValue : unmanaged, IDataCollection, IDataValue<TValue>
+        where TValue : unmanaged, IDataTreeCollection, IDataValue<TValue>
     {
         public DataLocation<TValue>? GetChild() =>
             location.Value.Child == -1 ? null : location.Access.Read<TValue>(location.Value.Child);
@@ -86,9 +86,29 @@ static class DataLocationExtensions
             return location.Add(dataLocation);
         }
 
+        public DataLocation<TValue> Add(Func<TValue, TValue> func)
+        {
+            var dataLocation = location.Access.Create<TValue>(func);
+            return location.Add(dataLocation);
+        }
+
         public async ValueTask<DataLocation<TValue>> AddAsync(CancellationToken cancellationToken = default)
         {
             var dataLocation = await location.Access.CreateAsync<TValue>(cancellationToken);
+            return location.Add(dataLocation);
+        }
+
+        public async ValueTask<DataLocation<TValue>> AddAsync(Func<TValue, TValue> func,
+            CancellationToken cancellationToken = default)
+        {
+            var dataLocation = await location.Access.CreateAsync(func, cancellationToken);
+            return location.Add(dataLocation);
+        }
+
+        public async ValueTask<DataLocation<TValue>> AddAsync(Func<TValue, CancellationToken, ValueTask<TValue>> func,
+            CancellationToken cancellationToken = default)
+        {
+            var dataLocation = await location.Access.CreateAsync(func, cancellationToken);
             return location.Add(dataLocation);
         }
 
@@ -125,6 +145,7 @@ static class DataLocationExtensions
                         location.Update(value => value with { Child = dataLocation.Value.Next });
                     }
 
+                    location.Access.GetTrash().Add(x => x with { Child = dataLocation.Offset });
                     return dataLocation;
                 }
 
@@ -162,8 +183,8 @@ static class DataLocationExtensions
     }
 
     extension<TKey, TValue>(DataLocation<TValue> location)
+        where TValue : unmanaged, IDataTreeDictionary<TKey>, IDataValue<TValue>
         where TKey : unmanaged, IEquatable<TKey>
-        where TValue : unmanaged, IDataDictionary<TKey>, IDataValue<TValue>
     {
         public DataLocation<TValue>? TryGet(TKey key)
         {

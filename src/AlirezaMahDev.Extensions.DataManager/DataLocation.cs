@@ -56,7 +56,7 @@ readonly struct DataLocation(DataAccess access, long offset, Memory<byte> memory
 }
 
 readonly struct DataLocation<TDataValue>(DataLocation @base) : IDataLocation<DataLocation<TDataValue>, TDataValue>
-    where TDataValue : unmanaged,IDataValue<TDataValue>
+    where TDataValue : unmanaged, IDataValue<TDataValue>
 {
     public long Offset { get; } = @base.Offset;
     private static readonly int Length = Unsafe.SizeOf<TDataValue>();
@@ -70,6 +70,16 @@ readonly struct DataLocation<TDataValue>(DataLocation @base) : IDataLocation<Dat
     {
         using var scope = _lock.EnterScope();
         Value = func(Value);
+        return this;
+    }
+
+    public async ValueTask<DataLocation<TDataValue>> UpdateAsync(
+        Func<TDataValue, CancellationToken, ValueTask<TDataValue>> func,
+        CancellationToken cancellationToken = default)
+    {
+        _lock.Enter();
+        Value = await func(Value, cancellationToken).ConfigureAwait(true);
+        _lock.Exit();
         return this;
     }
 

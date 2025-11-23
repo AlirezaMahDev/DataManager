@@ -22,6 +22,25 @@ public class UnitTest(ITestOutputHelper testOutputHelper)
     
     
     [Fact]
+    public void TestAddManyItems()
+    {
+        using (var access = new DataAccess("data.db"))
+        {
+            var root = access.GetRoot();
+            root.Add();
+            root.Add();
+            root.Add();
+            root.Add();
+            root.Add();
+            access.Save();
+        }
+
+        using (var access = new DataAccess("data.db"))
+        {
+            testOutputHelper.WriteLine(access.GetRoot().GetChildren().Count().ToString());
+        }
+    }
+    [Fact]
     public void TestAddManyItemWithKeys()
     {
         using (var access = new DataAccess("data.db"))
