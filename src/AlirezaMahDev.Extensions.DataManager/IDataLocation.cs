@@ -1,48 +1,54 @@
 namespace AlirezaMahDev.Extensions.DataManager;
 
-interface IDataLocation<TDataLocation> : IDataLocationBase
+public interface IDataLocation<TDataLocation> : IDataLocationBase
     where TDataLocation : IDataLocation<TDataLocation>
 {
-    static abstract DataLocation Create(DataAccess access, int length);
+    static abstract DataLocation Create(IDataAccess access, int length);
 
-    static abstract ValueTask<DataLocation> CreateAsync(DataAccess access,
+    static abstract ValueTask<DataLocation> CreateAsync(IDataAccess access,
         int length,
         CancellationToken cancellationToken = default);
 
-    static abstract DataLocation Read(DataAccess access, long offset, int length);
+    static abstract DataLocation Read(IDataAccess access, long offset, int length);
 
-    static abstract ValueTask<DataLocation> ReadAsync(DataAccess access,
+    static abstract ValueTask<DataLocation> ReadAsync(IDataAccess access,
         long offset,
         int length,
         CancellationToken cancellationToken = default);
 
-    static abstract void Write(DataAccess access, DataLocation location);
+    static abstract void Write(IDataAccess access, DataLocation location);
 
-    static abstract ValueTask WriteAsync(DataAccess access,
+    static abstract ValueTask WriteAsync(IDataAccess access,
         DataLocation location,
         CancellationToken cancellationToken = default);
+
+    static abstract DataLocation<TValue> Create<TValue>(IDataAccess access)
+        where TValue : unmanaged, IDataValue<TValue>, IDataValueDefault<TValue>;
+
+    static abstract ValueTask<DataLocation<TValue>> CreateAsync<TValue>(IDataAccess access,
+        CancellationToken cancellationToken = default)
+        where TValue : unmanaged, IDataValue<TValue>, IDataValueDefault<TValue>;
+
+    static abstract DataLocation<TValue> Read<TValue>(IDataAccess access, long offset)
+        where TValue : unmanaged, IDataValue<TValue>;
+
+    static abstract ValueTask<DataLocation<TValue>> ReadAsync<TValue>(IDataAccess access,
+        long offset,
+        CancellationToken cancellationToken = default)
+        where TValue : unmanaged, IDataValue<TValue>;
+
+    static abstract void Write<TValue>(IDataAccess access, DataLocation<TValue> location)
+        where TValue : unmanaged, IDataValue<TValue>;
+
+    static abstract ValueTask WriteAsync<TValue>(IDataAccess access,
+        DataLocation<TValue> location,
+        CancellationToken cancellationToken = default)
+        where TValue : unmanaged, IDataValue<TValue>;
 }
 
-interface IDataLocation<TDataLocation, TDataValue> : IDataLocationBase
-    where TDataLocation : IDataLocation<TDataLocation, TDataValue>
-    where TDataValue : unmanaged, IDataValue<TDataValue>
+public interface IDataLocation<TSelf, TValue> : IDataLocationBase
+    where TSelf : IDataLocation<TSelf, TValue>
+    where TValue : unmanaged, IDataValue<TValue>
 {
-    static abstract DataLocation<TDataValue> Create(DataAccess access);
-
-    static abstract ValueTask<DataLocation<TDataValue>> CreateAsync(DataAccess access,
-        CancellationToken cancellationToken = default);
-
-    static abstract DataLocation<TDataValue> Read(DataAccess access, long offset);
-
-    static abstract ValueTask<DataLocation<TDataValue>> ReadAsync(DataAccess access,
-        long offset,
-        CancellationToken cancellationToken = default);
-
-    static abstract void Write(DataAccess access, DataLocation<TDataValue> location);
-
-    static abstract ValueTask WriteAsync(DataAccess access,
-        DataLocation<TDataValue> location,
-        CancellationToken cancellationToken = default);
-
-    ref TDataValue Value { get; }
+    ref TValue Value { get; }
 }

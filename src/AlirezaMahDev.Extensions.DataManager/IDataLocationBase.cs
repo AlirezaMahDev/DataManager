@@ -1,9 +1,10 @@
 namespace AlirezaMahDev.Extensions.DataManager;
 
-interface IDataLocationBase
+public interface IDataLocationBase
 {
     long Offset { get; }
-    DataAccess Access { get; }
+    int Length { get; }
+    IDataAccess Access { get; }
     Memory<byte> Memory { get; }
     void Save();
     ValueTask SaveAsync(CancellationToken cancellationToken = default);

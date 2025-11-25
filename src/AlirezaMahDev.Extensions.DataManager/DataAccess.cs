@@ -1,61 +1,9 @@
-using System.Buffers;
 using System.Collections.Concurrent;
-using System.IO.Hashing;
 using System.Runtime.CompilerServices;
 
 using Microsoft.Win32.SafeHandles;
 
 namespace AlirezaMahDev.Extensions.DataManager;
-
-interface IDataAccess
-{
-    DataLocation<DataPath> GetRoot();
-    ValueTask<DataLocation<DataPath>> GetRootAsync(CancellationToken cancellationToken = default);
-    
-    DataLocation<DataPath> GetTrash();
-    ValueTask<DataLocation<DataPath>> GetTrashAsync(CancellationToken cancellationToken = default);
-}
-
-class DataIndex
-{
-    
-}
-
-class DataMemory : IMemoryOwner<byte>
-{
-    private readonly IMemoryOwner<byte> _memoryOwner;
-    private int _usedCount;
-    private UInt128 _hash;
-
-    public DataMemory(int length)
-    {
-        _memoryOwner = MemoryPool<byte>.Shared.Rent(length);
-        Memory = _memoryOwner.Memory[..length];
-    }
-
-    public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
-    public int UsedCount => _usedCount;
-
-    public bool CheckHash =>
-        _hash == GenerateHash();
-
-    public void CreateHash() =>
-        _hash = GenerateHash();
-
-    private UInt128 GenerateHash() =>
-        XxHash128.HashToUInt128(Memory.Span);
-
-    public Memory<byte> Memory
-    {
-        get
-        {
-            Interlocked.Increment(ref _usedCount);
-            return field;
-        }
-    }
-
-    public void Dispose() => _memoryOwner.Dispose();
-}
 
 sealed class DataAccess : IDisposable, IDataAccess
 {
@@ -81,19 +29,32 @@ sealed class DataAccess : IDisposable, IDataAccess
     }
 
     public DataLocation<DataPath> GetRoot() =>
-        DataLocation<DataPath>.Read(this, 0);
+        DataLocation.Read<DataPath>(this, 0);
 
     public async ValueTask<DataLocation<DataPath>> GetRootAsync(CancellationToken cancellationToken = default) =>
-        await DataLocation<DataPath>.ReadAsync(this, 0, cancellationToken);
+        await DataLocation.ReadAsync<DataPath>(this, 0, cancellationToken);
 
 
-    public DataLocation<DataPath> GetTrash() =>
-        GetRoot().GetOrAdd(".trash".AsString64());
+    public DataLocation<DataTrash> GetTrash()
+    {
+        return GetRoot()
+            .Wrap(x => x.TreeDictionary())
+            .GetOrAdd(".trash")
+            .Wrap(x => x.Storage())
+            .GetOrCreateData<DataPath, DataTrash>();
+    }
 
-    public async ValueTask<DataLocation<DataPath>> GetTrashAsync(CancellationToken cancellationToken = default) =>
-        await DataLocation<DataPath>.ReadAsync(this, 0, cancellationToken);
+    public async ValueTask<DataLocation<DataTrash>> GetTrashAsync(CancellationToken cancellationToken = default)
+    {
+        var root = await GetRootAsync(cancellationToken);
+        var trashPath = await root.Wrap(x => x.TreeDictionary())
+            .GetOrAddAsync(".trash", cancellationToken);
+        return await trashPath
+            .Wrap(x => x.Storage())
+            .GetOrCreateDataAsync<DataPath, DataTrash>(cancellationToken);
+    }
 
-    public long GenerateOffset(int length)
+    public long AllocateOffset(int length)
     {
         return Interlocked.Add(ref _length, length) - length;
     }
@@ -111,7 +72,7 @@ sealed class DataAccess : IDisposable, IDataAccess
         }
     }
 
-    public Memory<byte> Read(long offset, int length)
+    public Memory<byte> ReadMemory(long offset, int length)
     {
         if (_cache.TryGetValue(offset, out var dataMemory))
         {
@@ -126,7 +87,7 @@ sealed class DataAccess : IDisposable, IDataAccess
         return dataMemory.Memory;
     }
 
-    public async ValueTask<Memory<byte>> ReadAsync(long offset,
+    public async ValueTask<Memory<byte>> ReadMemoryAsync(long offset,
         int length,
         CancellationToken cancellationToken = default)
     {
@@ -143,12 +104,14 @@ sealed class DataAccess : IDisposable, IDataAccess
         return dataMemory.Memory;
     }
 
-    public void Write(long offset, Span<byte> span)
+    public void WriteMemory(long offset, Memory<byte> memory)
     {
-        RandomAccess.Write(_safeFileHandle, span, offset);
+        RandomAccess.Write(_safeFileHandle, memory.Span, offset);
     }
 
-    public async ValueTask WriteAsync(long offset, Memory<byte> memory, CancellationToken cancellationToken = default)
+    public async ValueTask WriteMemoryAsync(long offset,
+        Memory<byte> memory,
+        CancellationToken cancellationToken = default)
     {
         await RandomAccess.WriteAsync(_safeFileHandle, memory, offset, cancellationToken);
     }
@@ -157,7 +120,7 @@ sealed class DataAccess : IDisposable, IDataAccess
     {
         Parallel.ForEach(_cache.Where(x => !x.Value.CheckHash),
             (pair, _) =>
-                Write(pair.Key, pair.Value.Memory.Span));
+                WriteMemory(pair.Key, pair.Value.Memory));
     }
 
     public async Task SaveAsync(CancellationToken cancellationToken = default)
@@ -165,7 +128,7 @@ sealed class DataAccess : IDisposable, IDataAccess
         await Parallel.ForEachAsync(_cache.Where(x => !x.Value.CheckHash),
             cancellationToken,
             async ValueTask (pair, token) =>
-                await WriteAsync(pair.Key, pair.Value.Memory, token));
+                await WriteMemoryAsync(pair.Key, pair.Value.Memory, token));
     }
 
     public void Dispose() =>

@@ -3,12 +3,13 @@ using System.Runtime.InteropServices;
 
 namespace AlirezaMahDev.Extensions.DataManager;
 
-readonly struct DataLocation(DataAccess access, long offset, Memory<byte> memory) : IDataLocation<DataLocation>
+public readonly struct DataLocation(IDataAccess access, long offset, Memory<byte> memory) : IDataLocation<DataLocation>
 {
     public long Offset { get; } = offset;
+    public int Length { get; } = memory.Length;
 
     public Memory<byte> Memory { get; } = memory;
-    public DataAccess Access { get; } = access;
+    public IDataAccess Access { get; } = access;
 
     public void Save()
     {
@@ -20,121 +21,132 @@ readonly struct DataLocation(DataAccess access, long offset, Memory<byte> memory
         await WriteAsync(Access, this, cancellationToken);
     }
 
-    public static DataLocation Create(DataAccess access, int length)
+    public static DataLocation Create(IDataAccess access, int length)
     {
-        return Read(access, access.GenerateOffset(length), length);
+        return Read(access, access.AllocateOffset(length), length);
     }
 
-    public static async ValueTask<DataLocation> CreateAsync(DataAccess access,
+    public static async ValueTask<DataLocation> CreateAsync(IDataAccess access,
         int length,
         CancellationToken cancellationToken = default)
     {
-        return await ReadAsync(access, access.GenerateOffset(length), length, cancellationToken);
+        return await ReadAsync(access, access.AllocateOffset(length), length, cancellationToken);
     }
 
-    public static DataLocation Read(DataAccess access, long offset, int length) =>
-        new(access, offset, access.Read(offset, length));
+    public static DataLocation Read(IDataAccess access, long offset, int length) =>
+        new(access, offset, access.ReadMemory(offset, length));
 
-    public static async ValueTask<DataLocation> ReadAsync(DataAccess access,
+    public static async ValueTask<DataLocation> ReadAsync(IDataAccess access,
         long offset,
         int length,
         CancellationToken cancellationToken) =>
-        new(access, offset, await access.ReadAsync(offset, length, cancellationToken));
+        new(access, offset, await access.ReadMemoryAsync(offset, length, cancellationToken));
 
 
-    public static void Write(DataAccess access, DataLocation location)
+    public static void Write(IDataAccess access, DataLocation location)
     {
-        access.Write(location.Offset, location.Memory.Span);
+        access.WriteMemory(location.Offset, location.Memory);
     }
 
-    public static async ValueTask WriteAsync(DataAccess access,
+    public static async ValueTask WriteAsync(IDataAccess access,
         DataLocation location,
         CancellationToken cancellationToken = default)
     {
-        await access.WriteAsync(location.Offset, location.Memory, cancellationToken);
+        await access.WriteMemoryAsync(location.Offset, location.Memory, cancellationToken);
+    }
+
+    public static DataLocation<TValue> Create<TValue>(IDataAccess access)
+        where TValue : unmanaged, IDataValue<TValue>, IDataValueDefault<TValue>
+    {
+        var location = new DataLocation<TValue>(Create(access, DataLocation<TValue>.Size));
+        if (location.Value.Equals(default))
+            location.Value = TValue.Default;
+        return location;
+    }
+
+    public static async ValueTask<DataLocation<TValue>> CreateAsync<TValue>(IDataAccess access,
+        CancellationToken cancellationToken = default)
+        where TValue : unmanaged, IDataValue<TValue>, IDataValueDefault<TValue>
+    {
+        var location =
+            new DataLocation<TValue>(await CreateAsync(access, DataLocation<TValue>.Size, cancellationToken));
+        if (location.Value.Equals(default))
+            location.Value = TValue.Default;
+        return location;
+    }
+
+    public static DataLocation<TValue> Read<TValue>(IDataAccess access, long offset)
+        where TValue : unmanaged, IDataValue<TValue>
+    {
+        return new(Read(access, offset, DataLocation<TValue>.Size));
+    }
+
+    public static async ValueTask<DataLocation<TValue>> ReadAsync<TValue>(IDataAccess access,
+        long offset,
+        CancellationToken cancellationToken)
+        where TValue : unmanaged, IDataValue<TValue>
+    {
+        return new(await ReadAsync(access, offset, DataLocation<TValue>.Size, cancellationToken));
+    }
+
+    public static void Write<TValue>(IDataAccess access, DataLocation<TValue> location)
+        where TValue : unmanaged, IDataValue<TValue>
+    {
+        Write(access, location.Base);
+    }
+
+    public static async ValueTask WriteAsync<TValue>(IDataAccess access,
+        DataLocation<TValue> location,
+        CancellationToken cancellationToken = default)
+        where TValue : unmanaged, IDataValue<TValue>
+    {
+        await WriteAsync(access, location.Base, cancellationToken);
     }
 }
 
-readonly struct DataLocation<TDataValue>(DataLocation @base) : IDataLocation<DataLocation<TDataValue>, TDataValue>
-    where TDataValue : unmanaged, IDataValue<TDataValue>
+public readonly struct DataLocation<TValue>(DataLocation @base) : IDataLocation<DataLocation<TValue>, TValue>
+    where TValue : unmanaged, IDataValue<TValue>
 {
+    public static readonly int Size = Unsafe.SizeOf<TValue>();
+    
     public long Offset { get; } = @base.Offset;
-    private static readonly int Length = Unsafe.SizeOf<TDataValue>();
-    private readonly DataLocation _base = @base;
+    public int Length { get; } = Size;
+    
     private readonly Lock _lock = new();
 
-    public ref TDataValue Value =>
-        ref MemoryMarshal.AsRef<TDataValue>(_base.Memory.Span);
+    public DataLocation Base { get; } = @base;
 
-    public DataLocation<TDataValue> Update(Func<TDataValue, TDataValue> func)
+    public ref TValue Value =>
+        ref MemoryMarshal.AsRef<TValue>(Base.Memory.Span);
+
+    public DataLocation<TValue> Update(Func<TValue, TValue> func)
     {
         using var scope = _lock.EnterScope();
         Value = func(Value);
         return this;
     }
 
-    public async ValueTask<DataLocation<TDataValue>> UpdateAsync(
-        Func<TDataValue, CancellationToken, ValueTask<TDataValue>> func,
+    public async ValueTask<DataLocation<TValue>> UpdateAsync(
+        Func<TValue, CancellationToken, ValueTask<TValue>> func,
         CancellationToken cancellationToken = default)
     {
         _lock.Enter();
-        Value = await func(Value, cancellationToken).ConfigureAwait(true);
+        var temp = await func(Value, cancellationToken).ConfigureAwait(true);
+        Value = temp;
         _lock.Exit();
         return this;
     }
 
-    public DataAccess Access => _base.Access;
-    public Memory<byte> Memory => _base.Memory;
+    public IDataAccess Access => Base.Access;
+    public Memory<byte> Memory => Base.Memory;
 
     public void Save()
     {
-        _base.Save();
+        Base.Save();
     }
 
     public async ValueTask SaveAsync(CancellationToken cancellationToken = default)
     {
-        await _base.SaveAsync(cancellationToken);
-    }
-
-    public static DataLocation<TDataValue> Create(DataAccess access)
-    {
-        var location = new DataLocation<TDataValue>(DataLocation.Create(access, Length));
-        if (location.Value.Equals(default))
-            location.Value = TDataValue.Default;
-        return location;
-    }
-
-    public static async ValueTask<DataLocation<TDataValue>> CreateAsync(DataAccess access,
-        CancellationToken cancellationToken = default)
-    {
-        var location =
-            new DataLocation<TDataValue>(await DataLocation.CreateAsync(access, Length, cancellationToken));
-        if (location.Value.Equals(default))
-            location.Value = TDataValue.Default;
-        return location;
-    }
-
-    public static DataLocation<TDataValue> Read(DataAccess access, long offset)
-    {
-        return new(DataLocation.Read(access, offset, Length));
-    }
-
-    public static async ValueTask<DataLocation<TDataValue>> ReadAsync(DataAccess access,
-        long offset,
-        CancellationToken cancellationToken)
-    {
-        return new(await DataLocation.ReadAsync(access, offset, Length, cancellationToken));
-    }
-
-    public static void Write(DataAccess access, DataLocation<TDataValue> location)
-    {
-        DataLocation.Write(access, location._base);
-    }
-
-    public static async ValueTask WriteAsync(DataAccess access,
-        DataLocation<TDataValue> location,
-        CancellationToken cancellationToken = default)
-    {
-        await DataLocation.WriteAsync(access, location._base, cancellationToken);
+        await Base.SaveAsync(cancellationToken);
     }
 }
