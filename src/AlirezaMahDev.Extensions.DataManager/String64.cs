@@ -19,7 +19,7 @@ public readonly unsafe struct String64 : IEquatable<String64>, IString<String64>
 
     public static implicit operator String64(string? value)
     {
-        return value is null ? Empty : new(value.AsSpan());
+        return value is null ? Empty : new(value.PadRight(Length, ' ').AsSpan());
     }
 
     public ReadOnlySpan<char> Span
@@ -59,7 +59,7 @@ public readonly unsafe struct String64 : IEquatable<String64>, IString<String64>
     {
         return ToString();
     }
-    
+
     public override string ToString()
     {
         return new string(Span).Trim();

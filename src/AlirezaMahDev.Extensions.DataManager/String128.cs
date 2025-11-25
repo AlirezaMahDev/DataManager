@@ -18,7 +18,7 @@ public readonly unsafe struct String128 : IEquatable<String128>, IString<String1
 
     public static implicit operator String128(string? value)
     {
-        return new(value is null ? [] : value.AsSpan());
+        return new(value is null ? [] : value.PadRight(Length, ' ').AsSpan());
     }
 
     public ReadOnlySpan<char> Span

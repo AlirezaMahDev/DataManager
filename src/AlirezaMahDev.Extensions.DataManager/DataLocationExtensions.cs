@@ -37,7 +37,7 @@ static class DataLocationExtensions
     extension<TValue>(DataLocation<TValue> location)
         where TValue : unmanaged, IDataValue<TValue>
     {
-        public bool IsDefault => location.Value.Equals(default);
+        public bool IsDefault => location.Base.Length != DataLocation<TValue>.Size || location.Value.Equals(default);
 
         public DataLocation<TValue> WhenDefault(Func<DataLocation<TValue>> func) =>
             location.IsDefault ? func() : location;
@@ -469,11 +469,10 @@ static class DataLocationExtensions
         {
             var locationWrapCollection = locationWrap
                 .Wrap(x => x.Collection());
-            var dataLocation = locationWrapCollection
+            return locationWrapCollection
                 .GetChildren()
                 .FirstOrDefault(x => x.Value.Key.Equals(key))
-                .WhenDefault(() => locationWrap.Location.Access.Create<TItem>(value => value with { Key = key }));
-            return locationWrapCollection.Add(dataLocation);
+                .WhenDefault(() => locationWrapCollection.Add(value => value with { Key = key }));
         }
 
         public async ValueTask<DataLocation<TItem>> GetOrAddAsync(TKey key,
@@ -484,10 +483,9 @@ static class DataLocationExtensions
             var dataLocation = await locationWrapCollection
                 .GetChildrenAsync(cancellationToken)
                 .FirstOrDefaultAsync(x => x.Value.Key.Equals(key), cancellationToken);
-            dataLocation = await dataLocation.WhenDefaultAsync(async token =>
-                    await locationWrap.Location.Access.CreateAsync<TItem>(value => value with { Key = key }, token),
+            return await dataLocation.WhenDefaultAsync(async token =>
+                    await locationWrapCollection.AddAsync(value => value with { Key = key }, token),
                 cancellationToken: cancellationToken);
-            return locationWrapCollection.Add(dataLocation);
         }
     }
 

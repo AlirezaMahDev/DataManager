@@ -5,8 +5,9 @@ using Microsoft.Win32.SafeHandles;
 
 namespace AlirezaMahDev.Extensions.DataManager;
 
-sealed class DataAccess : IDisposable, IDataAccess
+class DataAccess : IDisposable, IDataAccess
 {
+    public string Path { get; }
     private bool _disposedValue;
 
     private readonly ConcurrentDictionary<long, DataMemory> _cache = [];
@@ -16,8 +17,9 @@ sealed class DataAccess : IDisposable, IDataAccess
 
     public DataAccess(string path)
     {
+        Path = path;
         _safeFileHandle = File.OpenHandle(
-            Path.Combine(Environment.CurrentDirectory, path),
+            System.IO.Path.Combine(Environment.CurrentDirectory, path),
             FileMode.OpenOrCreate,
             FileAccess.ReadWrite,
             FileShare.None);
@@ -29,10 +31,10 @@ sealed class DataAccess : IDisposable, IDataAccess
     }
 
     public DataLocation<DataPath> GetRoot() =>
-        DataLocation.Read<DataPath>(this, 0);
+        this.Read<DataPath>(0);
 
     public async ValueTask<DataLocation<DataPath>> GetRootAsync(CancellationToken cancellationToken = default) =>
-        await DataLocation.ReadAsync<DataPath>(this, 0, cancellationToken);
+        await this.ReadAsync<DataPath>(0, cancellationToken);
 
 
     public DataLocation<DataTrash> GetTrash()
@@ -57,19 +59,6 @@ sealed class DataAccess : IDisposable, IDataAccess
     public long AllocateOffset(int length)
     {
         return Interlocked.Add(ref _length, length) - length;
-    }
-
-    private void Dispose(bool disposing)
-    {
-        if (!_disposedValue)
-        {
-            if (disposing)
-            {
-                _safeFileHandle.Dispose();
-            }
-
-            _disposedValue = true;
-        }
     }
 
     public Memory<byte> ReadMemory(long offset, int length)
@@ -131,6 +120,47 @@ sealed class DataAccess : IDisposable, IDataAccess
                 await WriteMemoryAsync(pair.Key, pair.Value.Memory, token));
     }
 
-    public void Dispose() =>
+    public void Flush()
+    {
+        Save();
+        _cache.Clear();
+    }
+    
+    
+    public async ValueTask FlushAsync(CancellationToken cancellationToken = default)
+    {
+        await SaveAsync(cancellationToken);
+        _cache.Clear();
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposedValue)
+        {
+            if (disposing)
+            {
+                _safeFileHandle.Dispose();
+            }
+
+            _disposedValue = true;
+        }
+    }
+    
+    public void Dispose()
+    {
         Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+}
+
+class TempDataAccess() : DataAccess(System.IO.Path.GetTempFileName())
+{
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing)
+        {
+            File.Delete(Path);
+        }
+    }
 }

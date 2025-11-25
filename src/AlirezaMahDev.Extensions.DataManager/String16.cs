@@ -18,7 +18,7 @@ public readonly unsafe struct String16 : IEquatable<String16>, IString<String16>
 
     public static implicit operator String16(string? value)
     {
-        return new(value is null ? [] : value);
+        return new(value is null ? [] : value.PadRight(Length, ' ').AsSpan());
     }
 
     public ReadOnlySpan<char> Span

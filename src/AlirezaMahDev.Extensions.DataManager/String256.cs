@@ -18,7 +18,7 @@ public readonly unsafe struct String256 : IEquatable<String256>, IString<String2
 
     public static implicit operator String256(string? value)
     {
-        return new(value is null ? [] : value.AsSpan());
+        return new(value is null ? [] : value.PadRight(Length, ' ').AsSpan());
     }
 
     public ReadOnlySpan<char> Span

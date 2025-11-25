@@ -18,7 +18,7 @@ public readonly unsafe struct String32 : IEquatable<String32>, IString<String32>
 
     public static implicit operator String32(string? value)
     {
-        return new(value is null ? [] : value.AsSpan());
+        return new(value is null ? [] : value.PadRight(Length, ' ').AsSpan());
     }
 
     public ReadOnlySpan<char> Span
